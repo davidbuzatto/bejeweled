@@ -369,5 +369,30 @@ void drawGameWorld( GameWorld *gw ) {
 }
 
 static bool checkValidityAndCommitChanges( GameWorld *gw ) {
+
+    /*
+     * 1) checar se o tipo das peças são diferentes;
+     * 2) disparar o algoritmo para tanto a peça selecionada quanto a movida;
+     * 3) verificar cada um dos casos:
+     *    a) em linha, vertical e horizontal, 3 ou mais joias;
+     *    b) em T, 4 ou mais joias;
+     *    c) em L, 5 ou mais joias;
+     *    d) em T, 4 ou mais joias;
+     *    e) em cruz, 5 joias;
+     *    f) quadrado 2x2
+     */
+
+    /* 
+     * se houver match:
+     * 1) marcar peças para remoção;
+     * 2) remover as peças;
+     * 3) fazer as peças caírem;
+     * 4) gerar novas peças
+     * 5) realizar a verificação para cada peça, pois podem ser criados
+     *    novos matches ao preencher o tabuleiro.
+     */
+
+
     return true;
+
 }
