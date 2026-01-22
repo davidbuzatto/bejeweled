@@ -35,7 +35,7 @@ static Piece *topNeighbor;
 static Piece *downNeighbor;
 static Piece *beingSwapped;
 
-static Position positionlist[LIST_CAPACITY];
+static Position positionList[LIST_CAPACITY];
 static int positionListSize = 0;
 
 static FallingPiece animationList[LIST_CAPACITY];
@@ -44,7 +44,43 @@ static const float BASE_FALL_SPEED = 100;
 static float fallSpeed = 0;
 static const float GRAVITY = 2000;
 
-static int linear[] = {
+static Position piecesToCheckPositionList[LIST_CAPACITY];
+static int piecesToCheckPositionListSize = 0;
+
+static int crossTest[] = {
+    1, 4, 1, 1, 1, 1, 4, 1,
+    1, 3, 1, 1, 1, 4, 4, 4,
+    4, 4, 4, 1, 1, 1, 3, 1,
+    1, 4, 1, 1, 1, 1, 4, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 4, 1, 1, 1, 1, 4, 1,
+    4, 4, 3, 4, 4, 3, 4, 4,
+    1, 4, 1, 1, 1, 1, 4, 1
+};
+
+static int tTest[] = {
+    1, 4, 1, 1, 1, 4, 1, 1,
+    1, 4, 1, 1, 4, 3, 4, 1,
+    4, 3, 4, 1, 1, 4, 1, 1,
+    1, 4, 1, 1, 1, 4, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 4, 1, 1, 4, 1, 1,
+    4, 4, 3, 4, 4, 3, 4, 4,
+    1, 1, 4, 1, 1, 4, 1, 1
+};
+
+static int lTest[] = {
+    4, 1, 1, 1, 1, 1, 1, 4,
+    4, 1, 1, 1, 1, 1, 1, 4,
+    3, 4, 4, 1, 1, 4, 4, 3,
+    4, 1, 1, 1, 1, 1, 1, 4,
+    4, 1, 1, 1, 1, 1, 1, 4,
+    3, 4, 4, 1, 1, 4, 4, 3,
+    4, 1, 1, 1, 1, 1, 1, 4,
+    4, 1, 1, 1, 1, 1, 1, 4
+};
+
+static int linearTest[] = {
     1, 1, 1, 1, 1, 1, 1, 1,
     4, 1, 1, 1, 1, 1, 4, 1,
     4, 1, 1, 1, 1, 4, 3, 1,
@@ -55,7 +91,11 @@ static int linear[] = {
     1, 1, 4, 4, 3, 4, 1, 1,
 };
 
+static int *piecesToUse = NULL;
+
 static bool checkValidityAndCommitChanges( GameWorld *gw, int r1, int c1, int r2, int c2 );
+static bool checkPiece( GameWorld *gw, int row, int col );
+static void processMatches( GameWorld *gw );
 static void buildGrid( GameWorld *gw, int *pieces );
 
 static void positionListAdd( int row, int col );
@@ -65,9 +105,11 @@ static void positionListUncheckAndClear( GameWorld *gw );
 static void animationListAdd( Piece *p, float targetY );
 static void animationListClear( void );
 
+static void piecesToCheckPositionListAdd( int row, int col );
+static void piecesToCheckPositionListClear( void );
+
 static void resetGrid( GameWorld *gw ) {
-    buildGrid( gw, NULL );
-    //buildGrid( gw, linear );
+    buildGrid( gw, piecesToUse );
     gw->state = GAME_STATE_PLAYING;
     positionListClear();
     animationListClear();
@@ -374,7 +416,19 @@ void updateGameWorld( GameWorld *gw, float delta ) {
         }
         if ( ok == animationListSize ) {
             animationListClear();
-            gw->state = GAME_STATE_PLAYING;
+            // verifying new matches for new pieces
+            bool newMatches = false;
+            for ( int i = 0; i < piecesToCheckPositionListSize; i++ ) {
+                if ( checkPiece( gw, piecesToCheckPositionList[i].row, piecesToCheckPositionList[i].col ) ) {
+                    newMatches = true;
+                }
+            }
+            if ( newMatches ) {
+                piecesToCheckPositionListClear();
+                processMatches( gw );
+            } else {
+                gw->state = GAME_STATE_PLAYING;
+            }
         }
         fallSpeed += GRAVITY * delta;
     }
@@ -421,6 +475,275 @@ void drawGameWorld( GameWorld *gw ) {
     }
 
     EndDrawing();
+
+}
+
+static bool checkCross( GameWorld *gw, int row, int col ) {
+
+    Piece (*grid)[GRID_HEIGHT] = gw->grid;
+    int type = grid[row][col].type;
+
+    int left = 0;
+    int right = 0;
+    int top = 0;
+    int down = 0;
+
+    // left
+    for ( int c = col - 1; c >= 0; c-- ) {
+        if ( grid[row][c].type == grid[row][col].type ) {
+            left++;
+            grid[row][c].checked = true;
+            positionListAdd( row, c );
+        } else {
+            break;
+        }
+    }
+
+    if ( left == 2 && right == 0 && top == 0 && down == 0 && row > 0 && row < GRID_HEIGHT - 1 ) {
+        if ( grid[row-1][col-1].type == type && grid[row+1][col-1].type == type ) {
+            grid[row][col].checked = true;
+            grid[row-1][col-1].checked = true;
+            grid[row+1][col-1].checked = true;
+            positionListAdd( row, col );
+            positionListAdd( row-1, col-1 );
+            positionListAdd( row+1, col-1 );
+            return true;
+        }
+    }
+
+    // right
+    for ( int c = col + 1; c < GRID_WIDTH; c++ ) {
+        if ( grid[row][c].type == grid[row][col].type ) {
+            right++;
+            grid[row][c].checked = true;
+            positionListAdd( row, c );
+        } else {
+            break;
+        }
+    }
+
+    if ( right == 2 && left == 0 && top == 0 && down == 0 && row > 0 && row < GRID_HEIGHT - 1 ) {
+        if ( grid[row-1][col+1].type == type && grid[row+1][col+1].type == type ) {
+            grid[row][col].checked = true;
+            grid[row-1][col+1].checked = true;
+            grid[row+1][col+1].checked = true;
+            positionListAdd( row, col );
+            positionListAdd( row-1, col+1 );
+            positionListAdd( row+1, col+1 );
+            return true;
+        }
+    }
+
+    // top
+    for ( int r = row - 1; r >= 0; r-- ) {
+        if ( grid[r][col].type == grid[row][col].type ) {
+            top++;
+            grid[r][col].checked = true;
+            positionListAdd( r, col );
+        } else {
+            break;
+        }
+    }
+
+    if ( top == 2 && down == 0 && left == 0 && right == 0 && col > 0 && col < GRID_WIDTH - 1 ) {
+        if ( grid[row-1][col-1].type == type && grid[row-1][col+1].type == type ) {
+            grid[row][col].checked = true;
+            grid[row-1][col-1].checked = true;
+            grid[row-1][col+1].checked = true;
+            positionListAdd( row, col );
+            positionListAdd( row-1, col-1 );
+            positionListAdd( row-1, col+1 );
+            return true;
+        }
+    }
+
+    // down
+    for ( int r = row + 1; r < GRID_HEIGHT; r++ ) {
+        if ( grid[r][col].type == grid[row][col].type ) {
+            down++;
+            grid[r][col].checked = true;
+            positionListAdd( r, col );
+        } else {
+            break;
+        }
+    }
+
+    if ( down == 2 && top == 0 && left == 0 && right == 0 && col > 0 && col < GRID_WIDTH - 1 ) {
+        if ( grid[row+1][col-1].type == type && grid[row+1][col+1].type == type ) {
+            grid[row][col].checked = true;
+            grid[row+1][col-1].checked = true;
+            grid[row+1][col+1].checked = true;
+            positionListAdd( row, col );
+            positionListAdd( row+1, col-1 );
+            positionListAdd( row+1, col+1 );
+            return true;
+        }
+    }
+
+    positionListUncheckAndClear( gw );
+    return false;
+
+}
+
+static bool checkT( GameWorld *gw, int row, int col ) {
+
+    Piece (*grid)[GRID_HEIGHT] = gw->grid;
+    int type = grid[row][col].type;
+
+    int left = 0;
+    int right = 0;
+    int top = 0;
+    int down = 0;
+
+    for ( int c = col - 1; c >= 0; c-- ) {
+        if ( grid[row][c].type == grid[row][col].type ) {
+            left++;
+            grid[row][c].checked = true;
+            positionListAdd( row, c );
+        } else {
+            break;
+        }
+    }
+
+    for ( int c = col + 1; c < GRID_WIDTH; c++ ) {
+        if ( grid[row][c].type == grid[row][col].type ) {
+            right++;
+            grid[row][c].checked = true;
+            positionListAdd( row, c );
+        } else {
+            break;
+        }
+    }
+
+    for ( int r = row - 1; r >= 0; r-- ) {
+        if ( grid[r][col].type == grid[row][col].type ) {
+            top++;
+            grid[r][col].checked = true;
+            positionListAdd( r, col );
+        } else {
+            break;
+        }
+    }
+
+    for ( int r = row + 1; r < GRID_HEIGHT; r++ ) {
+        if ( grid[r][col].type == grid[row][col].type ) {
+            down++;
+            grid[r][col].checked = true;
+            positionListAdd( r, col );
+        } else {
+            break;
+        }
+    }
+
+    //TraceLog( LOG_INFO, "left: %d, right: %d, top: %d, down: %d", left, right, top, down );
+
+    if ( top >= 1 && left == 1 && right == 1 && down == 0 ) {
+        grid[row][col].checked = true;
+        positionListAdd( row, col );
+        return true;
+    }
+
+    if ( down >= 1 && left == 1 && right == 1 && top == 0 ) {
+        grid[row][col].checked = true;
+        positionListAdd( row, col );
+        return true;
+    }
+
+    if ( left >= 1 && top == 1 && down == 1 && right == 0 ) {
+        grid[row][col].checked = true;
+        positionListAdd( row, col );
+        return true;
+    }
+
+    if ( right >= 1 && top == 1 && down == 1 && left == 0 ) {
+        grid[row][col].checked = true;
+        positionListAdd( row, col );
+        return true;
+    }
+
+    positionListUncheckAndClear( gw );
+    return false;
+
+}
+
+static bool checkL( GameWorld *gw, int row, int col ) {
+
+    Piece (*grid)[GRID_HEIGHT] = gw->grid;
+    int type = grid[row][col].type;
+
+    int left = 0;
+    int right = 0;
+    int top = 0;
+    int down = 0;
+
+    for ( int c = col - 1; c >= 0; c-- ) {
+        if ( grid[row][c].type == grid[row][col].type ) {
+            left++;
+            grid[row][c].checked = true;
+            positionListAdd( row, c );
+        } else {
+            break;
+        }
+    }
+
+    for ( int c = col + 1; c < GRID_WIDTH; c++ ) {
+        if ( grid[row][c].type == grid[row][col].type ) {
+            right++;
+            grid[row][c].checked = true;
+            positionListAdd( row, c );
+        } else {
+            break;
+        }
+    }
+
+    for ( int r = row - 1; r >= 0; r-- ) {
+        if ( grid[r][col].type == grid[row][col].type ) {
+            top++;
+            grid[r][col].checked = true;
+            positionListAdd( r, col );
+        } else {
+            break;
+        }
+    }
+
+    for ( int r = row + 1; r < GRID_HEIGHT; r++ ) {
+        if ( grid[r][col].type == grid[row][col].type ) {
+            down++;
+            grid[r][col].checked = true;
+            positionListAdd( r, col );
+        } else {
+            break;
+        }
+    }
+
+    //TraceLog( LOG_INFO, "left: %d, right: %d, top: %d, down: %d", left, right, top, down );
+
+    if ( top >= 2 && right >= 2 && left == 0 && down == 0 ) {
+        grid[row][col].checked = true;
+        positionListAdd( row, col );
+        return true;
+    }
+
+    if ( top >= 2 && left >= 2 && right == 0 && down == 0 ) {
+        grid[row][col].checked = true;
+        positionListAdd( row, col );
+        return true;
+    }
+
+    if ( down >= 2 && right >= 2 && left == 0 && top == 0 ) {
+        grid[row][col].checked = true;
+        positionListAdd( row, col );
+        return true;
+    }
+
+    if ( down >= 2 && left >= 2 && right == 0 && top == 0 ) {
+        grid[row][col].checked = true;
+        positionListAdd( row, col );
+        return true;
+    }
+
+    positionListUncheckAndClear( gw );
+    return false;
 
 }
 
@@ -506,99 +829,114 @@ static bool checkValidityAndCommitChanges( GameWorld *gw, int r1, int c1, int r2
     }
 
     /*
-     * 2) disparar o algoritmo para tanto a peça selecionada quanto a movida,
-     *    marcando as joias para remoção.
-     * 3) verificar cada um dos casos:
-     *    a) em linha, vertical e horizontal, 3 ou mais joias;
-     *    b) em T, 4 ou mais joias;
-     *    c) em L, 5 ou mais joias;
-     *    d) em cruz, 5 joias;
-     *    e) quadrado 2x2
+     * 2) trigger the same algorithms for selected and moved pieces, marking
+     *    them for removal.
+     * 3) verify each case (more specific to more generic):
+     *    a) cross, 5 pices;
+     *    b) T, 4 or more pieces;
+     *    c) L, 5 or more pieces;
+     *    d) horizontal or vertical, 3 or more pieces.
      */
-    bool linearFound1 = checkLinear( gw, r1, c1 );
-    positionListClear();
-    bool linearFound2 = checkLinear( gw, r2, c2 );
-    positionListClear();
+    bool p1Found = checkPiece( gw, r1, c1 );
+    bool p2Found = checkPiece( gw, r2, c2 );
 
-    bool matched = linearFound1 || linearFound2;
+    bool matched = p1Found || p2Found;
 
-    // se houve match:
+    // theres a match
     if ( matched ) {
+        processMatches( gw );
+    }
 
-        // 1) remover as peças;
-        for ( int i = 0; i < GRID_HEIGHT; i++ ) {
-            for ( int j = 0; j < GRID_WIDTH; j++ ) {
-                if ( gw->grid[i][j].checked ) {
-                    gw->grid[i][j] = (Piece) {
-                        .type = PIECE_NULL,
-                        .pos = { j * gw->pieceSize, i * gw->pieceSize },
-                        .dim = { gw->pieceSize, gw->pieceSize },
-                        .selected = false,
-                        .checked = false
-                    };
-                }
-            }
-        }
+    return matched;
 
-        // 2) fazer as peças caírem;
+}
 
-        // inserção na animação
-        for ( int i = 0; i < GRID_HEIGHT; i++ ) {
-            for ( int j = 0; j < GRID_WIDTH; j++ ) {
-                int emptyCount = 0;
-                if ( gw->grid[i][j].type != PIECE_NULL ) {
-                    for ( int k = i+1; k < GRID_HEIGHT; k++ ) {
-                        if ( gw->grid[k][j].type == PIECE_NULL ) {
-                            emptyCount++;
-                        }
-                    }
-                    if ( emptyCount > 0 ) {
-                        animationListAdd( &gw->grid[i+emptyCount][j], gw->grid[i+emptyCount][j].pos.y );
-                    }
-                }
-            }
-        }
+static bool checkPiece( GameWorld *gw, int row, int col ) {
 
-        // troca "física" (no grid)
-        int newPieces[GRID_WIDTH] = {0};
+    bool crossFound = checkCross( gw, row, col );
+    positionListClear();
+    bool tFound = checkT( gw, row, col );
+    positionListClear();
+    bool lFound = checkL( gw, row, col );
+    positionListClear();
+    bool linearFound = checkLinear( gw, row, col );
+    positionListClear();
 
-        for ( int i = 0; i < GRID_HEIGHT; i++ ) {
-            for ( int j = 0; j < GRID_WIDTH; j++ ) {
-                if ( gw->grid[i][j].type == PIECE_NULL ) {
-                    newPieces[j]++;
-                    for ( int k = i; k > 0; k-- ) {
-                        Piece p = gw->grid[k][j];
-                        gw->grid[k][j] = gw->grid[k-1][j];
-                        gw->grid[k-1][j] = p;
-                    }
-                }
-            }
-        }
+    return crossFound || tFound || lFound || linearFound;
 
-        // 3) gerar novas peças;
+}
+
+static void processMatches( GameWorld *gw ) {
+
+    // 1) remove pieces;
+    for ( int i = 0; i < GRID_HEIGHT; i++ ) {
         for ( int j = 0; j < GRID_WIDTH; j++ ) {
-            //TraceLog( LOG_INFO, "%d", newPieces[j] );
-            for ( int k = 0; k < newPieces[j]; k++ ) {
-                gw->grid[k][j] = (Piece) {
-                    .type = GetRandomValue( 1, 7 ),
-                    .pos = { j * gw->pieceSize, ( k - newPieces[j] ) * gw->pieceSize },
+            if ( gw->grid[i][j].checked ) {
+                gw->grid[i][j] = (Piece) {
+                    .type = PIECE_NULL,
+                    .pos = { j * gw->pieceSize, i * gw->pieceSize },
                     .dim = { gw->pieceSize, gw->pieceSize },
                     .selected = false,
                     .checked = false
                 };
-                animationListAdd( &gw->grid[k][j], k * gw->pieceSize );
             }
         }
-
-        gw->state = GAME_STATE_DROPPING_NEW_PIECES;
-        fallSpeed = BASE_FALL_SPEED;
-
-        // 4) realizar a verificação para cada peça, pois podem ser criados
-        //    novos matches ao preencher o tabuleiro.
-
     }
 
-    return matched;
+    // 2) fall the pieces;
+
+    // animation
+    for ( int i = 0; i < GRID_HEIGHT; i++ ) {
+        for ( int j = 0; j < GRID_WIDTH; j++ ) {
+            int emptyCount = 0;
+            if ( gw->grid[i][j].type != PIECE_NULL ) {
+                for ( int k = i+1; k < GRID_HEIGHT; k++ ) {
+                    if ( gw->grid[k][j].type == PIECE_NULL ) {
+                        emptyCount++;
+                    }
+                }
+                if ( emptyCount > 0 ) {
+                    animationListAdd( &gw->grid[i+emptyCount][j], gw->grid[i+emptyCount][j].pos.y );
+                    piecesToCheckPositionListAdd( i+emptyCount, j );
+                }
+            }
+        }
+    }
+
+    // "physical" exchange (grid)
+    int newPieces[GRID_WIDTH] = {0};
+
+    for ( int i = 0; i < GRID_HEIGHT; i++ ) {
+        for ( int j = 0; j < GRID_WIDTH; j++ ) {
+            if ( gw->grid[i][j].type == PIECE_NULL ) {
+                newPieces[j]++;
+                for ( int k = i; k > 0; k-- ) {
+                    Piece p = gw->grid[k][j];
+                    gw->grid[k][j] = gw->grid[k-1][j];
+                    gw->grid[k-1][j] = p;
+                }
+            }
+        }
+    }
+
+    // 3) generating new pieces;
+    for ( int j = 0; j < GRID_WIDTH; j++ ) {
+        //TraceLog( LOG_INFO, "%d", newPieces[j] );
+        for ( int k = 0; k < newPieces[j]; k++ ) {
+            gw->grid[k][j] = (Piece) {
+                .type = GetRandomValue( 1, 7 ),
+                .pos = { j * gw->pieceSize, ( k - newPieces[j] ) * gw->pieceSize },
+                .dim = { gw->pieceSize, gw->pieceSize },
+                .selected = false,
+                .checked = false
+            };
+            animationListAdd( &gw->grid[k][j], k * gw->pieceSize );
+            piecesToCheckPositionListAdd( k, j );
+        }
+    }
+
+    gw->state = GAME_STATE_DROPPING_NEW_PIECES;
+    fallSpeed = BASE_FALL_SPEED;
 
 }
 
@@ -620,7 +958,7 @@ static void buildGrid( GameWorld *gw, int *pieces ) {
 
 static void positionListAdd( int row, int col ) {
     if ( positionListSize < LIST_CAPACITY ) {
-        positionlist[positionListSize++] = (Position) { row, col };
+        positionList[positionListSize++] = (Position) { row, col };
     }
 }
 
@@ -632,7 +970,7 @@ static void positionListUncheckAndClear( GameWorld *gw ) {
 
     if ( positionListSize > 0 ) {
         for ( int i = 0; i < positionListSize; i++ ) {
-            gw->grid[positionlist[i].row][positionlist[i].col].checked = false;
+            gw->grid[positionList[i].row][positionList[i].col].checked = false;
         }
     }
 
@@ -648,4 +986,14 @@ static void animationListAdd( Piece *p, float targetY ) {
 
 static void animationListClear( void ) {
     animationListSize = 0;
+}
+
+static void piecesToCheckPositionListAdd( int row, int col ) {
+    if ( piecesToCheckPositionListSize < LIST_CAPACITY ) {
+        piecesToCheckPositionList[piecesToCheckPositionListSize++] = (Position) { row, col };
+    }
+}
+
+static void piecesToCheckPositionListClear( void ) {
+    piecesToCheckPositionListSize = 0;
 }
