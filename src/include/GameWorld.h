@@ -19,6 +19,7 @@ typedef struct GameWorld {
     Piece grid[GRID_WIDTH][GRID_HEIGHT];
     int pieceSize;
     int pieceMargin;
+    GameState state;
 } GameWorld;
 
 /**

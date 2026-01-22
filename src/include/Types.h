@@ -10,12 +10,29 @@ typedef enum PieceType {
     PIECE_GREEN,
     PIECE_BLUE,
     PIECE_PINK,
-    PIECE_WHITE,
+    PIECE_WHITE
 } PieceType;
+
+typedef enum GameState {
+    GAME_STATE_PLAYING,
+    GAME_STATE_DROPPING_NEW_PIECES
+} GameState;
 
 typedef struct Piece {
     PieceType type;
     Vector2 pos;
     Vector2 dim;
     bool selected;
+    bool checked;
+    bool debug;
 } Piece;
+
+typedef struct FallingPiece {
+    Piece *piece;
+    float targetY;
+} FallingPiece;
+
+typedef struct Position {
+    int row;
+    int col;
+} Position;

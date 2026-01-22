@@ -38,4 +38,8 @@ void drawPiece( Piece *p, int padding ) {
         DrawRectangleLines( p->pos.x, p->pos.y, p->dim.x, p->dim.y, BLACK );
     }*/
 
+    if ( p->checked ) {
+        DrawCircle( p->pos.x + 10, p->pos.y + 10, 5, WHITE );
+    }
+
 }
