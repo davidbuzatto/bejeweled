@@ -118,7 +118,7 @@ static void resetGrid( GameWorld *gw ) {
 /**
  * @brief Creates a dinamically allocated GameWorld struct instance.
  */
-GameWorld* createGameWorld( void ) {
+GameWorld *createGameWorld( void ) {
 
     GameWorld *gw = (GameWorld*) calloc( 1, sizeof( GameWorld ) );
     gw->background = (Color){ 80, 49, 47, 255 };
